@@ -1,4 +1,25 @@
-import { SETTINGS_DEFAULTS, Settings } from "./settings";
+import { SETTINGS_DEFAULTS, Settings, SettingsRecord } from "./settings";
+
+type StorageAreaLike = {
+  get: (
+    keys: SettingsRecord,
+    cb: (res: Record<string, unknown>) => void
+  ) => void | Promise<Record<string, unknown>>;
+  set: (values: Record<string, unknown>, cb: () => void) => void | Promise<void>;
+};
+
+type StorageApi = {
+  sync?: StorageAreaLike;
+  local?: StorageAreaLike;
+  onChanged?: {
+    addListener: (
+      cb: (
+        changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
+        areaName: string
+      ) => void
+    ) => void;
+  };
+};
 
 declare const chrome: {
   runtime?: { lastError?: unknown };
@@ -107,7 +128,8 @@ declare global {
         if (k in fields) parts.push(`${k}=${String(fields[k])}`);
       }
       if ("preview" in fields) parts.push(`preview="${short(String(fields.preview ?? ""), 120)}"`);
-      if ("snapshot" in fields) parts.push(`snapshot="${short(String(fields.snapshot ?? ""), 120)}"`);
+      if ("snapshot" in fields)
+        parts.push(`snapshot="${short(String(fields.snapshot ?? ""), 120)}"`);
       if ("btn" in fields) parts.push(`btn="${short(String(fields.btn ?? ""), 160)}"`);
       if (parts.length) tail = " | " + parts.join(" ");
     }
@@ -164,39 +186,53 @@ declare global {
     if (!el) return false;
     try {
       if (typeof el.focus === "function") el.focus();
-    } catch (_) {
-    }
+    } catch (_) {}
 
     try {
       el.scrollIntoView({ block: "center", inline: "center" });
-    } catch (_) {
-    }
+    } catch (_) {}
 
     const rect = el.getBoundingClientRect();
     const cx = Math.max(1, Math.floor(rect.left + rect.width / 2));
     const cy = Math.max(1, Math.floor(rect.top + rect.height / 2));
-    const common = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 0 };
+    const common = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: cx,
+      clientY: cy,
+      button: 0
+    };
 
     try {
-      el.dispatchEvent(new PointerEvent("pointerdown", { ...common, pointerId: 1, pointerType: "mouse", isPrimary: true }));
-    } catch (_) {
-    }
+      el.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          ...common,
+          pointerId: 1,
+          pointerType: "mouse",
+          isPrimary: true
+        })
+      );
+    } catch (_) {}
     try {
       el.dispatchEvent(new MouseEvent("mousedown", common));
-    } catch (_) {
-    }
+    } catch (_) {}
     try {
-      el.dispatchEvent(new PointerEvent("pointerup", { ...common, pointerId: 1, pointerType: "mouse", isPrimary: true }));
-    } catch (_) {
-    }
+      el.dispatchEvent(
+        new PointerEvent("pointerup", {
+          ...common,
+          pointerId: 1,
+          pointerType: "mouse",
+          isPrimary: true
+        })
+      );
+    } catch (_) {}
     try {
       el.dispatchEvent(new MouseEvent("mouseup", common));
-    } catch (_) {
-    }
+    } catch (_) {}
     try {
       el.dispatchEvent(new MouseEvent("click", common));
-    } catch (_) {
-    }
+    } catch (_) {}
 
     tmLog("UI", `humanClick ${why}`, { preview: describeEl(el) });
     return true;
@@ -265,13 +301,21 @@ declare global {
     const txt = norm(btn.textContent);
 
     if (a.includes("submit dictation")) return true;
-    if (a.includes("dictation") && (a.includes("submit") || a.includes("accept") || a.includes("confirm"))) return true;
+    if (
+      a.includes("dictation") &&
+      (a.includes("submit") || a.includes("accept") || a.includes("confirm"))
+    )
+      return true;
 
     if (a.includes("готово")) return true;
     if (a.includes("подтверд")) return true;
     if (a.includes("принять")) return true;
 
-    if (dt.includes("dictation") && (dt.includes("submit") || dt.includes("done") || dt.includes("finish"))) return true;
+    if (
+      dt.includes("dictation") &&
+      (dt.includes("submit") || dt.includes("done") || dt.includes("finish"))
+    )
+      return true;
 
     if (t.includes("submit dictation")) return true;
     if (txt.includes("submit dictation")) return true;
@@ -408,7 +452,12 @@ declare global {
         if (v !== lastText) {
           lastText = v;
           lastChangeAt = performance.now();
-          tmLog("WAIT", "input changed", { inputFound: cur.ok, inputKind: cur.kind, len: v.length, preview: v });
+          tmLog("WAIT", "input changed", {
+            inputFound: cur.ok,
+            inputKind: cur.kind,
+            len: v.length,
+            preview: v
+          });
         }
 
         const stableForMs = (performance.now() - lastChangeAt) | 0;
@@ -488,7 +537,12 @@ declare global {
       const ack = cleared || !!stopGen;
 
       if (ack) {
-        tmLog("SEND", "ack ok", { ok: true, changed: cur !== before, len: cur.length, preview: cur });
+        tmLog("SEND", "ack ok", {
+          ok: true,
+          changed: cur !== before,
+          len: cur.length,
+          preview: cur
+        });
         return true;
       }
 
@@ -496,7 +550,12 @@ declare global {
     }
 
     const cur = readInputText().text;
-    tmLog("SEND", "ack timeout", { ok: false, changed: cur !== before, len: cur.length, preview: cur });
+    tmLog("SEND", "ack timeout", {
+      ok: false,
+      changed: cur !== before,
+      len: cur.length,
+      preview: cur
+    });
     return false;
   }
 
@@ -567,7 +626,9 @@ declare global {
         tmLog("FLOW", "send retry result", { ok: ok2 });
       }
     } catch (e) {
-      tmLog("ERR", "flow exception", { preview: String(e && (e as Error).stack || (e as Error).message || e) });
+      tmLog("ERR", "flow exception", {
+        preview: String((e && (e as Error).stack) || (e as Error).message || e)
+      });
     } finally {
       inFlight = false;
       tmLog("FLOW", "submit click flow end");
@@ -579,28 +640,26 @@ declare global {
     const a = norm(btn.getAttribute("aria-label"));
     const t = norm(btn.getAttribute("title"));
     const dt = norm(btn.getAttribute("data-testid"));
-    if (dt.includes("send") || dt.includes("stop") || dt.includes("voice") || dt.includes("dict")) return true;
-    if (a.includes("send") || a.includes("stop") || a.includes("dictat") || a.includes("voice")) return true;
-    if (a.includes("отправ") || a.includes("останов") || a.includes("диктов") || a.includes("микроф")) return true;
-    if (t.includes("send") || t.includes("stop") || t.includes("voice") || t.includes("dict")) return true;
+    if (dt.includes("send") || dt.includes("stop") || dt.includes("voice") || dt.includes("dict"))
+      return true;
+    if (a.includes("send") || a.includes("stop") || a.includes("dictat") || a.includes("voice"))
+      return true;
+    if (
+      a.includes("отправ") ||
+      a.includes("останов") ||
+      a.includes("диктов") ||
+      a.includes("микроф")
+    )
+      return true;
+    if (t.includes("send") || t.includes("stop") || t.includes("voice") || t.includes("dict"))
+      return true;
     return false;
   }
 
-  type StorageAreaLike = {
-    get: (keys: Record<string, unknown>, cb: (res: Record<string, unknown>) => void) => void;
-    set: (values: Record<string, unknown>, cb: () => void) => void;
-  };
-
-  type StorageApi = {
-    sync?: StorageAreaLike;
-    local?: StorageAreaLike;
-    onChanged?: {
-      addListener: (cb: (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, areaName: string) => void) => void;
-    };
-  };
-
   function getStorageArea(preferSync: boolean) {
-    const api = (typeof browser !== "undefined" ? browser : chrome) as { storage?: StorageApi } | undefined;
+    const api = (typeof browser !== "undefined" ? browser : chrome) as
+      | { storage?: StorageApi }
+      | undefined;
     const storage = api && api.storage ? api.storage : null;
     if (!storage) return null;
     if (preferSync && storage.sync) return storage.sync;
@@ -608,34 +667,54 @@ declare global {
     return null;
   }
 
-  function storageGet<T extends Record<string, unknown>>(defaults: T, cb: (res: T) => void) {
+  function isThenable<T>(value: void | Promise<T>): value is Promise<T> {
+    return Boolean(value) && typeof (value as Promise<T>).then === "function";
+  }
+
+  function storageGet<T extends SettingsRecord>(defaults: T, cb: (res: T) => void) {
     const areaSync = getStorageArea(true);
     const areaLocal = getStorageArea(false);
     const done = (res?: Record<string, unknown>) => cb({ ...defaults, ...(res || {}) } as T);
 
     if (areaSync && typeof areaSync.get === "function") {
       try {
-        areaSync.get(defaults, (res) => {
+        const result = areaSync.get(defaults, (res) => {
           const err = chrome?.runtime?.lastError ?? null;
           if (!err) return done(res);
           if (!areaLocal) return done(defaults);
           try {
-            areaLocal.get(defaults, (res2) => done(res2));
+            const fallbackResult = areaLocal.get(defaults, (res2) => done(res2));
+            if (isThenable(fallbackResult)) {
+              void fallbackResult.then(
+                (res2) => done(res2),
+                () => done(defaults)
+              );
+            }
           } catch (_) {
             done(defaults);
           }
         });
+        if (isThenable(result)) {
+          void result.then(
+            (res) => done(res),
+            () => done(defaults)
+          );
+        }
         return;
-      } catch (_) {
-      }
+      } catch (_) {}
     }
 
     if (areaLocal && typeof areaLocal.get === "function") {
       try {
-        areaLocal.get(defaults, (res) => done(res));
+        const result = areaLocal.get(defaults, (res) => done(res));
+        if (isThenable(result)) {
+          void result.then(
+            (res) => done(res),
+            () => done(defaults)
+          );
+        }
         return;
-      } catch (_) {
-      }
+      } catch (_) {}
     }
 
     done(defaults);
@@ -650,27 +729,43 @@ declare global {
 
     if (areaSync && typeof areaSync.set === "function") {
       try {
-        areaSync.set(values, () => {
+        const result = areaSync.set(values, () => {
           const err = chrome?.runtime?.lastError ?? null;
           if (!err) return done();
           if (!areaLocal || typeof areaLocal.set !== "function") return done();
           try {
-            areaLocal.set(values, () => done());
+            const fallbackResult = areaLocal.set(values, () => done());
+            if (isThenable(fallbackResult)) {
+              void fallbackResult.then(
+                () => done(),
+                () => done()
+              );
+            }
           } catch (_) {
             done();
           }
         });
+        if (isThenable(result)) {
+          void result.then(
+            () => done(),
+            () => done()
+          );
+        }
         return;
-      } catch (_) {
-      }
+      } catch (_) {}
     }
 
     if (areaLocal && typeof areaLocal.set === "function") {
       try {
-        areaLocal.set(values, () => done());
+        const result = areaLocal.set(values, () => done());
+        if (isThenable(result)) {
+          void result.then(
+            () => done(),
+            () => done()
+          );
+        }
         return;
-      } catch (_) {
-      }
+      } catch (_) {}
     }
 
     done();
@@ -682,9 +777,11 @@ declare global {
     return {
       skipKey: typeof data.skipKey === "string" ? data.skipKey : base.skipKey,
       holdToSend: typeof data.holdToSend === "boolean" ? data.holdToSend : base.holdToSend,
-      autoExpandChats: typeof data.autoExpandChats === "boolean" ? data.autoExpandChats : base.autoExpandChats,
+      autoExpandChats:
+        typeof data.autoExpandChats === "boolean" ? data.autoExpandChats : base.autoExpandChats,
       autoTempChat: typeof data.autoTempChat === "boolean" ? data.autoTempChat : base.autoTempChat,
-      tempChatEnabled: typeof data.tempChatEnabled === "boolean" ? data.tempChatEnabled : base.tempChatEnabled
+      tempChatEnabled:
+        typeof data.tempChatEnabled === "boolean" ? data.tempChatEnabled : base.tempChatEnabled
     };
   }
 
@@ -734,7 +831,10 @@ declare global {
   }
 
   function findVisibleBySelector(sel: string) {
-    return qsa<HTMLElement>(sel).find((el) => isElementVisible(el) && !el.hasAttribute("disabled")) || null;
+    return (
+      qsa<HTMLElement>(sel).find((el) => isElementVisible(el) && !el.hasAttribute("disabled")) ||
+      null
+    );
   }
 
   function persistTempChatEnabled(value: boolean) {
@@ -801,22 +901,30 @@ declare global {
 
   refreshSettings();
 
-  const storageApi = ((typeof browser !== "undefined" ? browser : chrome) as { storage?: StorageApi } | undefined)?.storage;
-  if (storageApi && storageApi.onChanged && typeof storageApi.onChanged.addListener === "function") {
-    storageApi.onChanged.addListener((changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, areaName: string) => {
-      if (areaName !== "sync" && areaName !== "local") return;
-      if (
-        !changes ||
-        (!("autoExpandChats" in changes) &&
-          !("skipKey" in changes) &&
-          !("holdToSend" in changes) &&
-          !("autoTempChat" in changes) &&
-          !("tempChatEnabled" in changes))
-      ) {
-        return;
+  const storageApi = (
+    (typeof browser !== "undefined" ? browser : chrome) as { storage?: StorageApi } | undefined
+  )?.storage;
+  if (
+    storageApi &&
+    storageApi.onChanged &&
+    typeof storageApi.onChanged.addListener === "function"
+  ) {
+    storageApi.onChanged.addListener(
+      (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, areaName: string) => {
+        if (areaName !== "sync" && areaName !== "local") return;
+        if (
+          !changes ||
+          (!("autoExpandChats" in changes) &&
+            !("skipKey" in changes) &&
+            !("holdToSend" in changes) &&
+            !("autoTempChat" in changes) &&
+            !("tempChatEnabled" in changes))
+        ) {
+          return;
+        }
+        refreshSettings();
       }
-      refreshSettings();
-    });
+    );
   }
 
   const AUTO_EXPAND_LOOP_MS = 400;
@@ -874,8 +982,12 @@ declare global {
 
   function autoExpandOpenSidebarButton() {
     return (
-      qs<HTMLButtonElement>('#stage-sidebar-tiny-bar button[aria-label="Open sidebar"][aria-controls="stage-slideover-sidebar"]') ||
-      qs<HTMLButtonElement>('button[aria-label="Open sidebar"][aria-controls="stage-slideover-sidebar"]')
+      qs<HTMLButtonElement>(
+        '#stage-sidebar-tiny-bar button[aria-label="Open sidebar"][aria-controls="stage-slideover-sidebar"]'
+      ) ||
+      qs<HTMLButtonElement>(
+        'button[aria-label="Open sidebar"][aria-controls="stage-slideover-sidebar"]'
+      )
     );
   }
 
@@ -897,7 +1009,12 @@ declare global {
     const sections = Array.from(nav.querySelectorAll("div.group\\/sidebar-expando-section"));
     for (const sec of sections) {
       const t = norm(sec.textContent);
-      if (t.includes("your chats") || t.includes("your charts") || t.includes("чаты") || t.includes("история")) {
+      if (
+        t.includes("your chats") ||
+        t.includes("your charts") ||
+        t.includes("чаты") ||
+        t.includes("история")
+      ) {
         return sec;
       }
     }
@@ -928,11 +1045,16 @@ declare global {
 
     if (!autoExpandSectionCollapsed(sec)) return false;
 
-    const btn = (sec as HTMLElement).querySelector("button.text-token-text-tertiary.flex.w-full") ||
+    const btn =
+      (sec as HTMLElement).querySelector("button.text-token-text-tertiary.flex.w-full") ||
       (sec as HTMLElement).querySelector("button") ||
       (sec as HTMLElement).querySelector('[role="button"]');
 
-    return autoExpandClickIfPossible("expandYourChats", btn as HTMLElement | null, "section looks collapsed");
+    return autoExpandClickIfPossible(
+      "expandYourChats",
+      btn as HTMLElement | null,
+      "section looks collapsed"
+    );
   }
 
   function autoExpandTick() {
@@ -943,7 +1065,9 @@ declare global {
       autoExpandEnsureSidebarOpen();
       autoExpandExpandYourChats();
     } catch (e) {
-      tmLog("AUTOEXPAND", "tick error", { preview: String(e && (e as Error).stack || (e as Error).message || e) });
+      tmLog("AUTOEXPAND", "tick error", {
+        preview: String((e && (e as Error).stack) || (e as Error).message || e)
+      });
     } finally {
       autoExpandState.running = false;
     }

@@ -1,4 +1,4 @@
-import { SETTINGS_DEFAULTS, Settings } from "./settings";
+import { SETTINGS_DEFAULTS, Settings, SettingsRecord } from "./settings";
 
 declare const chrome: {
   runtime?: { lastError?: unknown };
@@ -10,8 +10,11 @@ declare const browser: {
 };
 
 type StorageAreaLike = {
-  get: (keys: Record<string, unknown>, cb: (res: Record<string, unknown>) => void) => void;
-  set: (values: Record<string, unknown>, cb: () => void) => void;
+  get: (
+    keys: SettingsRecord,
+    cb: (res: Record<string, unknown>) => void
+  ) => void | Promise<Record<string, unknown>>;
+  set: (values: Record<string, unknown>, cb: () => void) => void | Promise<void>;
 };
 
 type StorageApi = {
@@ -21,6 +24,10 @@ type StorageApi = {
 
 function toError(err: unknown, fallback: string) {
   return err instanceof Error ? err : new Error(fallback);
+}
+
+function isThenable<T>(value: void | Promise<T>): value is Promise<T> {
+  return Boolean(value) && typeof (value as Promise<T>).then === "function";
 }
 
 function mustGetElement<T extends HTMLElement>(id: string) {
@@ -49,7 +56,9 @@ function setHint(skipKey: string, holdToSend: boolean) {
 }
 
 function getStorageArea(preferSync = true) {
-  const api = (typeof browser !== "undefined" ? browser : chrome) as { storage?: StorageApi } | undefined;
+  const api = (typeof browser !== "undefined" ? browser : chrome) as
+    | { storage?: StorageApi }
+    | undefined;
   const storage = api && api.storage ? api.storage : null;
   if (!storage) return null;
   if (preferSync && storage.sync) return storage.sync;
@@ -57,7 +66,7 @@ function getStorageArea(preferSync = true) {
   return null;
 }
 
-async function storageGet(keys: Settings) {
+async function storageGet(keys: SettingsRecord) {
   const areaSync = getStorageArea(true);
   const areaLocal = getStorageArea(false);
 
@@ -69,7 +78,7 @@ async function storageGet(keys: Settings) {
           if (err) reject(toError(err, "Storage get failed"));
           else resolve(res);
         });
-        if (r && typeof (r as Promise<unknown>).then === "function") (r as Promise<unknown>).then(resolve, reject);
+        if (isThenable(r)) r.then(resolve, reject);
       } catch (e) {
         reject(toError(e, "Storage get failed"));
       }
@@ -77,7 +86,7 @@ async function storageGet(keys: Settings) {
 
   try {
     if (areaSync) return await tryGet(areaSync);
-  } catch { }
+  } catch {}
 
   if (areaLocal) return await tryGet(areaLocal);
   return {};
@@ -95,7 +104,7 @@ async function storageSet(obj: Record<string, unknown>) {
           if (err) reject(toError(err, "Storage set failed"));
           else resolve();
         });
-        if (r && typeof (r as Promise<unknown>).then === "function") (r as Promise<unknown>).then(() => resolve(), reject);
+        if (isThenable(r)) r.then(() => resolve(), reject);
       } catch (e) {
         reject(toError(e, "Storage set failed"));
       }
@@ -107,7 +116,7 @@ async function storageSet(obj: Record<string, unknown>) {
       await trySet(areaSync);
       syncOk = true;
     }
-  } catch { }
+  } catch {}
 
   if (!syncOk && areaLocal) {
     await trySet(areaLocal);
@@ -120,9 +129,11 @@ function normalizeSettings(value: Record<string, unknown> | null | undefined): S
   return {
     skipKey: typeof data.skipKey === "string" ? data.skipKey : base.skipKey,
     holdToSend: typeof data.holdToSend === "boolean" ? data.holdToSend : base.holdToSend,
-    autoExpandChats: typeof data.autoExpandChats === "boolean" ? data.autoExpandChats : base.autoExpandChats,
+    autoExpandChats:
+      typeof data.autoExpandChats === "boolean" ? data.autoExpandChats : base.autoExpandChats,
     autoTempChat: typeof data.autoTempChat === "boolean" ? data.autoTempChat : base.autoTempChat,
-    tempChatEnabled: typeof data.tempChatEnabled === "boolean" ? data.tempChatEnabled : base.tempChatEnabled
+    tempChatEnabled:
+      typeof data.tempChatEnabled === "boolean" ? data.tempChatEnabled : base.tempChatEnabled
   };
 }
 
@@ -144,14 +155,20 @@ async function save() {
   const autoExpandChats = !!autoExpandEl.checked;
   const autoTempChat = !!autoTempChatEl.checked;
 
-  await storageSet({ skipKey, holdToSend, autoExpandChats, autoTempChat, tempChatEnabled: autoTempChat });
+  await storageSet({
+    skipKey,
+    holdToSend,
+    autoExpandChats,
+    autoTempChat,
+    tempChatEnabled: autoTempChat
+  });
 
   setHint(skipKey, holdToSend);
 }
 
-selectEl.addEventListener("change", () => void save().catch(() => { }));
-holdEl.addEventListener("change", () => void save().catch(() => { }));
-autoExpandEl.addEventListener("change", () => void save().catch(() => { }));
-autoTempChatEl.addEventListener("change", () => void save().catch(() => { }));
+selectEl.addEventListener("change", () => void save().catch(() => {}));
+holdEl.addEventListener("change", () => void save().catch(() => {}));
+autoExpandEl.addEventListener("change", () => void save().catch(() => {}));
+autoTempChatEl.addEventListener("change", () => void save().catch(() => {}));
 
-void load().catch(() => { });
+void load().catch(() => {});

@@ -48,7 +48,10 @@ if (manifest.action?.default_popup) {
 
 if (manifest.action?.default_icon) {
   manifest.action.default_icon = Object.fromEntries(
-    Object.entries(manifest.action.default_icon).map(([size, path]) => [size, stripDistPrefix(path)])
+    Object.entries(manifest.action.default_icon).map(([size, path]) => [
+      size,
+      stripDistPrefix(path)
+    ])
   );
 }
 

@@ -6,7 +6,9 @@ export interface Settings {
   tempChatEnabled: boolean;
 }
 
-export const SETTINGS_DEFAULTS: Settings = {
+export type SettingsRecord = Settings & Record<string, unknown>;
+
+export const SETTINGS_DEFAULTS: SettingsRecord = {
   skipKey: "Shift",
   holdToSend: false,
   autoExpandChats: true,

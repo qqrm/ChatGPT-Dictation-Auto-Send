@@ -1,11 +1,9 @@
 {
-    "summary": {
-        "en-US": "Auto-sends ChatGPT dictation transcripts when you accept them. Supports a configurable modifier key, optional Temporary Chat auto-enable, and auto-expanding the chat list."
-    },
-    "categories": [
-        "other"
-    ],
-    "version": {
-        "license": "MIT"
-    }
+  "summary": {
+    "en-US": "Auto-sends ChatGPT dictation transcripts when you accept them. Supports a configurable modifier key, optional Temporary Chat auto-enable, and auto-expanding the chat list."
+  },
+  "categories": ["other"],
+  "version": {
+    "license": "MIT"
+  }
 }
