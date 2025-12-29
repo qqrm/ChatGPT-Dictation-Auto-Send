@@ -1,3 +1,20 @@
+import { SETTINGS_DEFAULTS, Settings } from "./settings";
+
+declare const chrome: {
+  runtime?: { lastError?: unknown };
+  storage?: StorageApi;
+};
+
+declare const browser: {
+  storage?: StorageApi;
+};
+
+declare global {
+  interface Window {
+    __ChatGPTDictationAutoSendLoaded__?: boolean;
+  }
+}
+
 (() => {
   "use strict";
 
@@ -5,11 +22,25 @@
   window.__ChatGPTDictationAutoSendLoaded__ = true;
 
   const DEBUG = false;
-  const log = (...args) => {
+  const log = (...args: unknown[]) => {
     if (DEBUG) console.info("[DictationAutoSend]", ...args);
   };
 
-  const CFG = {
+  interface Config {
+    enabled: boolean;
+    holdToSend: boolean;
+    modifierKey: string | null;
+    modifierGraceMs: number;
+    autoExpandChatsEnabled: boolean;
+    autoTempChatEnabled: boolean;
+    finalTextTimeoutMs: number;
+    finalTextQuietMs: number;
+    sendAckTimeoutMs: number;
+    logClicks: boolean;
+    logBlur: boolean;
+  }
+
+  const CFG: Config = {
     enabled: true,
 
     holdToSend: false,
@@ -35,14 +66,20 @@
     return (performance.now() - BOOT_T0) | 0;
   }
 
-  function short(s, n = 140) {
+  function short(s: string, n = 140) {
     if (s == null) return "";
     const t = String(s).replace(/\s+/g, " ").trim();
     if (t.length <= n) return t;
     return t.slice(0, n) + "...";
   }
 
-  function tmLog(scope, msg, fields) {
+  type LogFields = Record<string, unknown> & {
+    preview?: string;
+    snapshot?: string;
+    btn?: string;
+  };
+
+  function tmLog(scope: string, msg: string, fields?: LogFields) {
     if (!DEBUG) return;
     LOG_N += 1;
     const t = String(nowMs()).padStart(6, " ");
@@ -65,37 +102,37 @@
         "inputKind",
         "inputFound"
       ];
-      const parts = [];
+      const parts: string[] = [];
       for (const k of allow) {
         if (k in fields) parts.push(`${k}=${String(fields[k])}`);
       }
-      if ("preview" in fields) parts.push(`preview="${short(fields.preview, 120)}"`);
-      if ("snapshot" in fields) parts.push(`snapshot="${short(fields.snapshot, 120)}"`);
-      if ("btn" in fields) parts.push(`btn="${short(fields.btn, 160)}"`);
+      if ("preview" in fields) parts.push(`preview=\"${short(String(fields.preview ?? ""), 120)}\"`);
+      if ("snapshot" in fields) parts.push(`snapshot=\"${short(String(fields.snapshot ?? ""), 120)}\"`);
+      if ("btn" in fields) parts.push(`btn=\"${short(String(fields.btn ?? ""), 160)}\"`);
       if (parts.length) tail = " | " + parts.join(" ");
     }
     console.log(`[TM DictationAutoSend] #${LOG_N} ${t} ${scope}: ${msg}${tail}`);
   }
 
-  function qs(sel, root = document) {
-    return root.querySelector(sel);
+  function qs<T extends Element = Element>(sel: string, root: Document | Element = document) {
+    return root.querySelector(sel) as T | null;
   }
 
-  function qsa(sel, root = document) {
-    return Array.from(root.querySelectorAll(sel));
+  function qsa<T extends Element = Element>(sel: string, root: Document | Element = document) {
+    return Array.from(root.querySelectorAll(sel)) as T[];
   }
 
-  function norm(s) {
+  function norm(s: string | null) {
     return String(s || "").toLowerCase();
   }
 
-  function isVisible(el) {
+  function isVisible(el: Element | null) {
     if (!el) return false;
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   }
 
-  function isElementVisible(el) {
+  function isElementVisible(el: Element | null) {
     if (!el || el.nodeType !== 1) return false;
     const r = el.getBoundingClientRect();
     if (r.width <= 1 || r.height <= 1) return false;
@@ -106,24 +143,24 @@
     return true;
   }
 
-  function describeEl(el) {
+  function describeEl(el: Element | null) {
     if (!el) return "null";
     const tag = el.tagName ? el.tagName.toLowerCase() : "node";
-    const id = el.id ? `#${el.id}` : "";
+    const id = (el as HTMLElement).id ? `#${(el as HTMLElement).id}` : "";
     const dt = el.getAttribute ? el.getAttribute("data-testid") : "";
     const aria = el.getAttribute ? el.getAttribute("aria-label") : "";
     const title = el.getAttribute ? el.getAttribute("title") : "";
     const txt = el.textContent ? short(el.textContent, 60) : "";
-    const bits = [];
+    const bits: string[] = [];
     bits.push(`${tag}${id}`);
     if (dt) bits.push(`data-testid=${dt}`);
-    if (aria) bits.push(`aria="${short(aria, 60)}"`);
-    if (title) bits.push(`title="${short(title, 60)}"`);
-    if (txt) bits.push(`text="${txt}"`);
+    if (aria) bits.push(`aria=\"${short(aria, 60)}\"`);
+    if (title) bits.push(`title=\"${short(title, 60)}\"`);
+    if (txt) bits.push(`text=\"${txt}\"`);
     return bits.join(" ");
   }
 
-  function humanClick(el, why) {
+  function humanClick(el: HTMLElement | null, why: string) {
     if (!el) return false;
     try {
       if (typeof el.focus === "function") el.focus();
@@ -165,44 +202,54 @@
     return true;
   }
 
-  function findTextbox() {
+  type TextboxElement = HTMLTextAreaElement | HTMLElement;
+
+  function findTextbox(): TextboxElement | null {
     return (
-      qs('textarea[data-testid="textbox"]') ||
-      qs("textarea#prompt-textarea") ||
-      qs("#prompt-textarea") ||
-      qs("textarea[data-testid='prompt-textarea']") ||
-      qs("textarea[placeholder]") ||
-      qs('div[contenteditable="true"][role="textbox"]') ||
-      qs('[role="textbox"][contenteditable="true"]') ||
+      qs<HTMLTextAreaElement>('textarea[data-testid="textbox"]') ||
+      qs<HTMLTextAreaElement>("textarea#prompt-textarea") ||
+      qs<HTMLTextAreaElement>("#prompt-textarea") ||
+      qs<HTMLTextAreaElement>("textarea[data-testid='prompt-textarea']") ||
+      qs<HTMLTextAreaElement>("textarea[placeholder]") ||
+      qs<HTMLElement>('div[contenteditable="true"][role="textbox"]') ||
+      qs<HTMLElement>('[role="textbox"][contenteditable="true"]') ||
       null
     );
   }
 
-  function readTextboxText(el) {
+  function readTextboxText(el: TextboxElement | null) {
     if (!el) return "";
-    if (el.tagName === "TEXTAREA") return el.value || "";
+    if (el instanceof HTMLTextAreaElement) return el.value || "";
     return String(el.innerText || el.textContent || "").replace(/\u00A0/g, " ");
   }
 
-  function readInputText() {
+  type InputKind = "textarea" | "contenteditable" | "none";
+
+  interface InputReadResult {
+    ok: boolean;
+    kind: InputKind;
+    text: string;
+  }
+
+  function readInputText(): InputReadResult {
     const el = findTextbox();
     if (!el) return { ok: false, kind: "none", text: "" };
-    const kind = el.tagName === "TEXTAREA" ? "textarea" : "contenteditable";
+    const kind: InputKind = el instanceof HTMLTextAreaElement ? "textarea" : "contenteditable";
     return { ok: true, kind, text: readTextboxText(el) };
   }
 
-  function findSendButton() {
+  function findSendButton(): HTMLButtonElement | null {
     return (
-      qs('[data-testid="send-button"]') ||
-      qs("#composer-submit-button") ||
-      qs("form button[type='submit']") ||
-      qs('button[aria-label*="Send"]') ||
-      qs('button[aria-label*="Отправ"]') ||
+      qs<HTMLButtonElement>('[data-testid="send-button"]') ||
+      qs<HTMLButtonElement>("#composer-submit-button") ||
+      qs<HTMLButtonElement>("form button[type='submit']") ||
+      qs<HTMLButtonElement>('button[aria-label*="Send"]') ||
+      qs<HTMLButtonElement>('button[aria-label*="Отправ"]') ||
       null
     );
   }
 
-  function isDisabled(btn) {
+  function isDisabled(btn: HTMLButtonElement | null) {
     if (!btn) return true;
     if (btn.hasAttribute("disabled")) return true;
     const ariaDisabled = btn.getAttribute("aria-disabled");
@@ -210,7 +257,7 @@
     return false;
   }
 
-  function isSubmitDictationButton(btn) {
+  function isSubmitDictationButton(btn: HTMLButtonElement | null) {
     if (!btn) return false;
     const a = norm(btn.getAttribute("aria-label"));
     const t = norm(btn.getAttribute("title"));
@@ -233,7 +280,7 @@
   }
 
   function findStopGeneratingButton() {
-    const candidates = qsa("button").filter((b) => {
+    const candidates = qsa<HTMLButtonElement>("button").filter((b) => {
       const a = norm(b.getAttribute("aria-label"));
       const t = norm(b.getAttribute("title"));
       const dt = norm(b.getAttribute("data-testid"));
@@ -251,7 +298,7 @@
     return null;
   }
 
-  function keyMatchesModifier(e) {
+  function keyMatchesModifier(e: KeyboardEvent | null) {
     if (!CFG.modifierKey || CFG.modifierKey === "None") return false;
     if (CFG.modifierKey === "Control") return e && (e.key === "Control" || e.key === "Ctrl");
     return e && e.key === CFG.modifierKey;
@@ -264,7 +311,7 @@
     return keyState.shift;
   }
 
-  function isModifierHeldFromEvent(e) {
+  function isModifierHeldFromEvent(e: MouseEvent | null) {
     if (!CFG.modifierKey || CFG.modifierKey === "None") return false;
     if (!e) return false;
     if (CFG.modifierKey === "Control") return !!e.ctrlKey;
@@ -275,7 +322,7 @@
   const keyState = { shift: false, ctrl: false, alt: false };
   let tempChatEnabled = false;
 
-  function updateKeyState(e, state) {
+  function updateKeyState(e: KeyboardEvent, state: boolean) {
     if (e.key === "Shift") keyState.shift = state;
     if (e.key === "Control" || e.key === "Ctrl") keyState.ctrl = state;
     if (e.key === "Alt") keyState.alt = state;
@@ -283,7 +330,7 @@
 
   window.addEventListener(
     "keydown",
-    (e) => {
+    (e: KeyboardEvent) => {
       updateKeyState(e, true);
       if (keyMatchesModifier(e)) {
         const graceActive = performance.now() <= graceUntilMs;
@@ -296,7 +343,7 @@
 
   window.addEventListener(
     "keyup",
-    (e) => {
+    (e: KeyboardEvent) => {
       updateKeyState(e, false);
       if (keyMatchesModifier(e)) {
         tmLog("KEY", "up modifier");
@@ -322,8 +369,21 @@
     true
   );
 
-  function waitForFinalText({ snapshot, timeoutMs, quietMs }) {
-    return new Promise((resolve) => {
+  interface WaitForFinalTextArgs {
+    snapshot: string;
+    timeoutMs: number;
+    quietMs: number;
+  }
+
+  interface WaitForFinalTextResult {
+    ok: boolean;
+    text: string;
+    kind: InputKind;
+    inputOk: boolean;
+  }
+
+  function waitForFinalText({ snapshot, timeoutMs, quietMs }: WaitForFinalTextArgs) {
+    return new Promise<WaitForFinalTextResult>((resolve) => {
       const t0 = performance.now();
 
       const first = readInputText();
@@ -387,8 +447,8 @@
     });
   }
 
-  function ensureNotGenerating(timeoutMs) {
-    return new Promise((resolve) => {
+  function ensureNotGenerating(timeoutMs: number) {
+    return new Promise<boolean>((resolve) => {
       const t0 = performance.now();
       const tick = () => {
         if (!findStopGeneratingButton()) {
@@ -442,7 +502,7 @@
 
   let inFlight = false;
 
-  async function runFlowAfterSubmitClick(submitBtnDesc, clickHeld) {
+  async function runFlowAfterSubmitClick(submitBtnDesc: string, clickHeld: boolean) {
     if (inFlight) {
       tmLog("FLOW", "skip: inFlight already true");
       return;
@@ -507,14 +567,14 @@
         tmLog("FLOW", "send retry result", { ok: ok2 });
       }
     } catch (e) {
-      tmLog("ERR", "flow exception", { preview: String(e && (e.stack || e.message || e)) });
+      tmLog("ERR", "flow exception", { preview: String(e && (e as Error).stack || (e as Error).message || e) });
     } finally {
       inFlight = false;
       tmLog("FLOW", "submit click flow end");
     }
   }
 
-  function isInterestingButton(btn) {
+  function isInterestingButton(btn: HTMLButtonElement | null) {
     if (!btn) return false;
     const a = norm(btn.getAttribute("aria-label"));
     const t = norm(btn.getAttribute("title"));
@@ -526,8 +586,21 @@
     return false;
   }
 
-  function getStorageArea(preferSync) {
-    const api = typeof browser !== "undefined" ? browser : chrome;
+  type StorageAreaLike = {
+    get: (keys: Record<string, unknown>, cb: (res: Record<string, unknown>) => void) => void;
+    set: (values: Record<string, unknown>, cb: () => void) => void;
+  };
+
+  type StorageApi = {
+    sync?: StorageAreaLike;
+    local?: StorageAreaLike;
+    onChanged?: {
+      addListener: (cb: (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, areaName: string) => void) => void;
+    };
+  };
+
+  function getStorageArea(preferSync: boolean) {
+    const api = (typeof browser !== "undefined" ? browser : chrome) as { storage?: StorageApi } | undefined;
     const storage = api && api.storage ? api.storage : null;
     if (!storage) return null;
     if (preferSync && storage.sync) return storage.sync;
@@ -535,15 +608,15 @@
     return null;
   }
 
-  function storageGet(defaults, cb) {
+  function storageGet<T extends Record<string, unknown>>(defaults: T, cb: (res: T) => void) {
     const areaSync = getStorageArea(true);
     const areaLocal = getStorageArea(false);
-    const done = (res) => cb(res || defaults);
+    const done = (res?: Record<string, unknown>) => cb({ ...defaults, ...(res || {}) } as T);
 
     if (areaSync && typeof areaSync.get === "function") {
       try {
         areaSync.get(defaults, (res) => {
-          const err = chrome && chrome.runtime ? chrome.runtime.lastError : null;
+          const err = chrome?.runtime?.lastError ?? null;
           if (!err) return done(res);
           if (!areaLocal) return done(defaults);
           try {
@@ -568,7 +641,7 @@
     done(defaults);
   }
 
-  function storageSet(values, cb) {
+  function storageSet(values: Record<string, unknown>, cb?: () => void) {
     const areaSync = getStorageArea(true);
     const areaLocal = getStorageArea(false);
     const done = () => {
@@ -578,7 +651,7 @@
     if (areaSync && typeof areaSync.set === "function") {
       try {
         areaSync.set(values, () => {
-          const err = chrome && chrome.runtime ? chrome.runtime.lastError : null;
+          const err = chrome?.runtime?.lastError ?? null;
           if (!err) return done();
           if (!areaLocal || typeof areaLocal.set !== "function") return done();
           try {
@@ -603,16 +676,27 @@
     done();
   }
 
+  function normalizeSettings(value: Record<string, unknown> | null | undefined): Settings {
+    const base = SETTINGS_DEFAULTS;
+    const data = value ?? {};
+    return {
+      skipKey: typeof data.skipKey === "string" ? data.skipKey : base.skipKey,
+      holdToSend: typeof data.holdToSend === "boolean" ? data.holdToSend : base.holdToSend,
+      autoExpandChats: typeof data.autoExpandChats === "boolean" ? data.autoExpandChats : base.autoExpandChats,
+      autoTempChat: typeof data.autoTempChat === "boolean" ? data.autoTempChat : base.autoTempChat,
+      tempChatEnabled: typeof data.tempChatEnabled === "boolean" ? data.tempChatEnabled : base.tempChatEnabled
+    };
+  }
+
   function refreshSettings() {
-    storageGet(
-      { skipKey: "Shift", holdToSend: false, autoExpandChats: true, autoTempChat: false, tempChatEnabled: false },
-      (res) => {
-      if (res && typeof res.skipKey === "string") CFG.modifierKey = res.skipKey;
+    storageGet(SETTINGS_DEFAULTS, (res) => {
+      const settings = normalizeSettings(res);
+      CFG.modifierKey = settings.skipKey;
       if (CFG.modifierKey === "None") CFG.modifierKey = null;
-      CFG.holdToSend = !!(res && res.holdToSend);
-      CFG.autoExpandChatsEnabled = res && "autoExpandChats" in res ? !!res.autoExpandChats : true;
-      CFG.autoTempChatEnabled = res && "autoTempChat" in res ? !!res.autoTempChat : false;
-      tempChatEnabled = res && "tempChatEnabled" in res ? !!res.tempChatEnabled : false;
+      CFG.holdToSend = settings.holdToSend;
+      CFG.autoExpandChatsEnabled = settings.autoExpandChats;
+      CFG.autoTempChatEnabled = settings.autoTempChat;
+      tempChatEnabled = settings.tempChatEnabled;
       log("settings refreshed", {
         skipKey: CFG.modifierKey,
         holdToSend: CFG.holdToSend,
@@ -621,8 +705,7 @@
         tempChatEnabled
       });
       maybeEnableTempChat();
-    }
-    );
+    });
   }
 
   let graceUntilMs = 0;
@@ -632,7 +715,13 @@
   const TEMP_CHAT_OFF_SELECTOR = 'button[aria-label="Turn off temporary chat"]';
   const TEMP_CHAT_MAX_RETRIES = 5;
   const TEMP_CHAT_RETRY_MS = 300;
-  const tempChatState = {
+  const tempChatState: {
+    retries: number;
+    started: boolean;
+    observer: MutationObserver | null;
+    urlIntervalId: number | null;
+    lastPath: string;
+  } = {
     retries: 0,
     started: false,
     observer: null,
@@ -644,11 +733,11 @@
     return !!qs(TEMP_CHAT_OFF_SELECTOR);
   }
 
-  function findVisibleBySelector(sel) {
-    return qsa(sel).find((el) => isElementVisible(el) && !el.disabled);
+  function findVisibleBySelector(sel: string) {
+    return qsa<HTMLElement>(sel).find((el) => isElementVisible(el) && !el.hasAttribute("disabled")) || null;
   }
 
-  function persistTempChatEnabled(value) {
+  function persistTempChatEnabled(value: boolean) {
     tempChatEnabled = value;
     storageSet({ tempChatEnabled });
     tmLog("TEMPCHAT", "persist state", { ok: value });
@@ -680,10 +769,10 @@
     }, TEMP_CHAT_RETRY_MS);
   }
 
-  function handleTempChatManualToggle(e) {
+  function handleTempChatManualToggle(e: MouseEvent) {
     if (!e.isTrusted) return;
     const target = e.target;
-    if (!target || !target.closest) return;
+    if (!(target instanceof Element) || !target.closest) return;
     if (target.closest(TEMP_CHAT_ON_SELECTOR)) return persistTempChatEnabled(true);
     if (target.closest(TEMP_CHAT_OFF_SELECTOR)) return persistTempChatEnabled(false);
   }
@@ -698,7 +787,7 @@
     tempChatState.observer = new MutationObserver(() => maybeEnableTempChat());
     tempChatState.observer.observe(document.documentElement, { childList: true, subtree: true });
 
-    tempChatState.urlIntervalId = setInterval(() => {
+    tempChatState.urlIntervalId = window.setInterval(() => {
       const cur = location.pathname + location.search;
       if (cur !== tempChatState.lastPath) {
         tempChatState.lastPath = cur;
@@ -714,7 +803,7 @@
 
   const storageApi = (typeof browser !== "undefined" ? browser : chrome)?.storage;
   if (storageApi && storageApi.onChanged && typeof storageApi.onChanged.addListener === "function") {
-    storageApi.onChanged.addListener((changes, areaName) => {
+    storageApi.onChanged.addListener((changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, areaName: string) => {
       if (areaName !== "sync" && areaName !== "local") return;
       if (
         !changes ||
@@ -732,7 +821,13 @@
 
   const AUTO_EXPAND_LOOP_MS = 400;
   const AUTO_EXPAND_CLICK_COOLDOWN_MS = 1500;
-  const autoExpandState = {
+  const autoExpandState: {
+    running: boolean;
+    started: boolean;
+    lastClickAtByKey: Map<string, number>;
+    intervalId: number | null;
+    observer: MutationObserver | null;
+  } = {
     running: false,
     started: false,
     lastClickAtByKey: new Map(),
@@ -740,23 +835,23 @@
     observer: null
   };
 
-  function autoExpandCanClick(key) {
+  function autoExpandCanClick(key: string) {
     const t = autoExpandState.lastClickAtByKey.get(key) || 0;
     return Date.now() - t > AUTO_EXPAND_CLICK_COOLDOWN_MS;
   }
 
-  function autoExpandMarkClick(key) {
+  function autoExpandMarkClick(key: string) {
     autoExpandState.lastClickAtByKey.set(key, Date.now());
   }
 
-  function autoExpandDispatchClick(el) {
+  function autoExpandDispatchClick(el: HTMLElement) {
     const seq = ["pointerdown", "mousedown", "mouseup", "click"];
     for (const t of seq) {
       el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
     }
   }
 
-  function autoExpandClickIfPossible(key, el, reason) {
+  function autoExpandClickIfPossible(key: string, el: HTMLElement | null, reason: string) {
     if (!el) return false;
     if (!isElementVisible(el)) return false;
     if (!autoExpandCanClick(key)) return false;
@@ -767,7 +862,7 @@
   }
 
   function autoExpandSidebarEl() {
-    return qs("#stage-slideover-sidebar");
+    return qs<HTMLElement>("#stage-slideover-sidebar");
   }
 
   function autoExpandSidebarIsOpen() {
@@ -779,8 +874,8 @@
 
   function autoExpandOpenSidebarButton() {
     return (
-      qs('#stage-sidebar-tiny-bar button[aria-label="Open sidebar"][aria-controls="stage-slideover-sidebar"]') ||
-      qs('button[aria-label="Open sidebar"][aria-controls="stage-slideover-sidebar"]')
+      qs<HTMLButtonElement>('#stage-sidebar-tiny-bar button[aria-label="Open sidebar"][aria-controls="stage-slideover-sidebar"]') ||
+      qs<HTMLButtonElement>('button[aria-label="Open sidebar"][aria-controls="stage-slideover-sidebar"]')
     );
   }
 
@@ -796,7 +891,7 @@
     return sb.querySelector('nav[aria-label="Chat history"]');
   }
 
-  function autoExpandFindYourChatsSection(nav) {
+  function autoExpandFindYourChatsSection(nav: Element | null) {
     if (!nav) return null;
 
     const sections = Array.from(nav.querySelectorAll("div.group\\/sidebar-expando-section"));
@@ -811,8 +906,8 @@
     return null;
   }
 
-  function autoExpandSectionCollapsed(sec) {
-    const cls = String(sec.className || "");
+  function autoExpandSectionCollapsed(sec: Element) {
+    const cls = String((sec as HTMLElement).className || "");
     if (cls.includes("sidebar-collapsed-section-margin-bottom")) return true;
     if (cls.includes("sidebar-expanded-section-margin-bottom")) return false;
 
@@ -833,11 +928,11 @@
 
     if (!autoExpandSectionCollapsed(sec)) return false;
 
-    const btn = sec.querySelector("button.text-token-text-tertiary.flex.w-full") ||
-      sec.querySelector("button") ||
-      sec.querySelector('[role="button"]');
+    const btn = (sec as HTMLElement).querySelector("button.text-token-text-tertiary.flex.w-full") ||
+      (sec as HTMLElement).querySelector("button") ||
+      (sec as HTMLElement).querySelector('[role="button"]');
 
-    return autoExpandClickIfPossible("expandYourChats", btn, "section looks collapsed");
+    return autoExpandClickIfPossible("expandYourChats", btn as HTMLElement | null, "section looks collapsed");
   }
 
   function autoExpandTick() {
@@ -848,7 +943,7 @@
       autoExpandEnsureSidebarOpen();
       autoExpandExpandYourChats();
     } catch (e) {
-      tmLog("AUTOEXPAND", "tick error", { preview: String(e && (e.stack || e.message || e)) });
+      tmLog("AUTOEXPAND", "tick error", { preview: String(e && (e as Error).stack || (e as Error).message || e) });
     } finally {
       autoExpandState.running = false;
     }
@@ -859,7 +954,7 @@
     autoExpandState.started = true;
     autoExpandTick();
 
-    autoExpandState.intervalId = setInterval(autoExpandTick, AUTO_EXPAND_LOOP_MS);
+    autoExpandState.intervalId = window.setInterval(autoExpandTick, AUTO_EXPAND_LOOP_MS);
 
     autoExpandState.observer = new MutationObserver(() => autoExpandTick());
     autoExpandState.observer.observe(document.documentElement, { childList: true, subtree: true });
@@ -881,14 +976,14 @@
 
   document.addEventListener(
     "click",
-    (e) => {
+    (e: MouseEvent) => {
       const target = e.target;
-      const btn = target && target.closest ? target.closest("button") : null;
+      const btn = target instanceof Element && target.closest ? target.closest("button") : null;
       if (!btn) return;
 
       const btnDesc = describeEl(btn);
 
-      if (CFG.logClicks && isInterestingButton(btn)) {
+      if (CFG.logClicks && isInterestingButton(btn as HTMLButtonElement)) {
         const cur = readInputText();
         tmLog("CLICK", "button click", {
           btn: btnDesc,
@@ -900,7 +995,7 @@
         });
       }
 
-      if (CFG.enabled && isSubmitDictationButton(btn)) {
+      if (CFG.enabled && isSubmitDictationButton(btn as HTMLButtonElement)) {
         refreshSettings();
         runFlowAfterSubmitClick(btnDesc, isModifierHeldFromEvent(e));
       }
