@@ -4,10 +4,18 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "format:write": "prettier --write .",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.43.0",
+    "@typescript-eslint/parser": "^8.43.0",
     "esbuild": "^0.25.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.2",
     "typescript": "^5.8.0"
   }
 }

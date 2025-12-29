@@ -19,6 +19,10 @@ type StorageApi = {
   local?: StorageAreaLike;
 };
 
+function toError(err: unknown, fallback: string) {
+  return err instanceof Error ? err : new Error(fallback);
+}
+
 function mustGetElement<T extends HTMLElement>(id: string) {
   const el = document.getElementById(id);
   if (!el) throw new Error(`Missing element: ${id}`);
@@ -62,12 +66,12 @@ async function storageGet(keys: Settings) {
       try {
         const r = area.get(keys, (res) => {
           const err = chrome?.runtime?.lastError ?? null;
-          if (err) reject(err);
+          if (err) reject(toError(err, "Storage get failed"));
           else resolve(res);
         });
         if (r && typeof (r as Promise<unknown>).then === "function") (r as Promise<unknown>).then(resolve, reject);
       } catch (e) {
-        reject(e);
+        reject(toError(e, "Storage get failed"));
       }
     });
 
@@ -88,12 +92,12 @@ async function storageSet(obj: Record<string, unknown>) {
       try {
         const r = area.set(obj, () => {
           const err = chrome?.runtime?.lastError ?? null;
-          if (err) reject(err);
+          if (err) reject(toError(err, "Storage set failed"));
           else resolve();
         });
         if (r && typeof (r as Promise<unknown>).then === "function") (r as Promise<unknown>).then(() => resolve(), reject);
       } catch (e) {
-        reject(e);
+        reject(toError(e, "Storage set failed"));
       }
     });
 

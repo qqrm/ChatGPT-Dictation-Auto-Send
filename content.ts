@@ -106,20 +106,20 @@ declare global {
       for (const k of allow) {
         if (k in fields) parts.push(`${k}=${String(fields[k])}`);
       }
-      if ("preview" in fields) parts.push(`preview=\"${short(String(fields.preview ?? ""), 120)}\"`);
-      if ("snapshot" in fields) parts.push(`snapshot=\"${short(String(fields.snapshot ?? ""), 120)}\"`);
-      if ("btn" in fields) parts.push(`btn=\"${short(String(fields.btn ?? ""), 160)}\"`);
+      if ("preview" in fields) parts.push(`preview="${short(String(fields.preview ?? ""), 120)}"`);
+      if ("snapshot" in fields) parts.push(`snapshot="${short(String(fields.snapshot ?? ""), 120)}"`);
+      if ("btn" in fields) parts.push(`btn="${short(String(fields.btn ?? ""), 160)}"`);
       if (parts.length) tail = " | " + parts.join(" ");
     }
     console.log(`[TM DictationAutoSend] #${LOG_N} ${t} ${scope}: ${msg}${tail}`);
   }
 
   function qs<T extends Element = Element>(sel: string, root: Document | Element = document) {
-    return root.querySelector(sel) as T | null;
+    return root.querySelector<T>(sel);
   }
 
   function qsa<T extends Element = Element>(sel: string, root: Document | Element = document) {
-    return Array.from(root.querySelectorAll(sel)) as T[];
+    return Array.from(root.querySelectorAll<T>(sel));
   }
 
   function norm(s: string | null) {
@@ -154,9 +154,9 @@ declare global {
     const bits: string[] = [];
     bits.push(`${tag}${id}`);
     if (dt) bits.push(`data-testid=${dt}`);
-    if (aria) bits.push(`aria=\"${short(aria, 60)}\"`);
-    if (title) bits.push(`title=\"${short(title, 60)}\"`);
-    if (txt) bits.push(`text=\"${txt}\"`);
+    if (aria) bits.push(`aria="${short(aria, 60)}"`);
+    if (title) bits.push(`title="${short(title, 60)}"`);
+    if (txt) bits.push(`text="${txt}"`);
     return bits.join(" ");
   }
 
@@ -801,7 +801,7 @@ declare global {
 
   refreshSettings();
 
-  const storageApi = (typeof browser !== "undefined" ? browser : chrome)?.storage;
+  const storageApi = ((typeof browser !== "undefined" ? browser : chrome) as { storage?: StorageApi } | undefined)?.storage;
   if (storageApi && storageApi.onChanged && typeof storageApi.onChanged.addListener === "function") {
     storageApi.onChanged.addListener((changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, areaName: string) => {
       if (areaName !== "sync" && areaName !== "local") return;
@@ -983,7 +983,7 @@ declare global {
 
       const btnDesc = describeEl(btn);
 
-      if (CFG.logClicks && isInterestingButton(btn as HTMLButtonElement)) {
+      if (CFG.logClicks && btn instanceof HTMLButtonElement && isInterestingButton(btn)) {
         const cur = readInputText();
         tmLog("CLICK", "button click", {
           btn: btnDesc,
@@ -995,9 +995,9 @@ declare global {
         });
       }
 
-      if (CFG.enabled && isSubmitDictationButton(btn as HTMLButtonElement)) {
+      if (CFG.enabled && btn instanceof HTMLButtonElement && isSubmitDictationButton(btn)) {
         refreshSettings();
-        runFlowAfterSubmitClick(btnDesc, isModifierHeldFromEvent(e));
+        void runFlowAfterSubmitClick(btnDesc, isModifierHeldFromEvent(e));
       }
     },
     true

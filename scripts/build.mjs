@@ -30,7 +30,7 @@ await Promise.all([
 ]);
 
 const popupHtml = await readFile("popup.html", "utf8");
-await writeFile(`${distDir}/popup.html`, popupHtml.replace(/dist\\//g, ""));
+await writeFile(`${distDir}/popup.html`, popupHtml.replace(/dist\//g, ""));
 
 const manifestRaw = await readFile("manifest.json", "utf8");
 const manifest = JSON.parse(manifestRaw);
