@@ -30,7 +30,7 @@ describe("utils", () => {
 
   it("checks visibility based on bounding box", () => {
     const el = document.createElement("div");
-    el.getBoundingClientRect = () => ({ width: 10, height: 10 } as DOMRect);
+    el.getBoundingClientRect = () => ({ width: 10, height: 10 }) as DOMRect;
 
     expect(isVisible(null)).toBe(false);
     expect(isVisible(el)).toBe(true);
@@ -38,7 +38,7 @@ describe("utils", () => {
 
   it("checks element visibility using styles", () => {
     const el = document.createElement("div");
-    el.getBoundingClientRect = () => ({ width: 10, height: 10 } as DOMRect);
+    el.getBoundingClientRect = () => ({ width: 10, height: 10 }) as DOMRect;
     document.body.appendChild(el);
 
     expect(isElementVisible(el)).toBe(true);

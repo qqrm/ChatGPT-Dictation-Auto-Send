@@ -58,18 +58,18 @@ export async function storageGet<T extends SettingsRecord>(
   try {
     if (areaSync) {
       const res = await tryGet(areaSync);
-      return { ...defaults, ...(res || {}) } as T;
+      return { ...defaults, ...(res || {}) };
     }
   } catch {}
 
   try {
     if (areaLocal) {
       const res = await tryGet(areaLocal);
-      return { ...defaults, ...(res || {}) } as T;
+      return { ...defaults, ...(res || {}) };
     }
   } catch {}
 
-  return { ...defaults } as T;
+  return { ...defaults };
 }
 
 export async function storageSet(
