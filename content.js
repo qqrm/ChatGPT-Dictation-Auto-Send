@@ -628,26 +628,6 @@
   let graceUntilMs = 0;
   let graceCaptured = false;
 
-  refreshSettings();
-
-  const storageApi = (typeof browser !== "undefined" ? browser : chrome)?.storage;
-  if (storageApi && storageApi.onChanged && typeof storageApi.onChanged.addListener === "function") {
-    storageApi.onChanged.addListener((changes, areaName) => {
-      if (areaName !== "sync" && areaName !== "local") return;
-      if (
-        !changes ||
-        (!("autoExpandChats" in changes) &&
-          !("skipKey" in changes) &&
-          !("holdToSend" in changes) &&
-          !("autoTempChat" in changes) &&
-          !("tempChatEnabled" in changes))
-      ) {
-        return;
-      }
-      refreshSettings();
-    });
-  }
-
   const TEMP_CHAT_ON_SELECTOR = 'button[aria-label="Turn on temporary chat"]';
   const TEMP_CHAT_OFF_SELECTOR = 'button[aria-label="Turn off temporary chat"]';
   const TEMP_CHAT_MAX_RETRIES = 5;
@@ -728,6 +708,26 @@
     }, 100);
 
     maybeEnableTempChat();
+  }
+
+  refreshSettings();
+
+  const storageApi = (typeof browser !== "undefined" ? browser : chrome)?.storage;
+  if (storageApi && storageApi.onChanged && typeof storageApi.onChanged.addListener === "function") {
+    storageApi.onChanged.addListener((changes, areaName) => {
+      if (areaName !== "sync" && areaName !== "local") return;
+      if (
+        !changes ||
+        (!("autoExpandChats" in changes) &&
+          !("skipKey" in changes) &&
+          !("holdToSend" in changes) &&
+          !("autoTempChat" in changes) &&
+          !("tempChatEnabled" in changes))
+      ) {
+        return;
+      }
+      refreshSettings();
+    });
   }
 
   const AUTO_EXPAND_LOOP_MS = 400;
