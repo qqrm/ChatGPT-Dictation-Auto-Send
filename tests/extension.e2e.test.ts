@@ -102,7 +102,8 @@ describe("extension e2e", () => {
       holdToSend: true,
       autoExpandChats: false,
       autoTempChat: true,
-      tempChatEnabled: true
+      tempChatEnabled: true,
+      oneClickDelete: true
     });
     await page.goto(popupUrl);
     await page.waitForSelector("#skipKey");
@@ -111,11 +112,13 @@ describe("extension e2e", () => {
     expect(await page.isChecked("#holdToSend")).toBe(true);
     expect(await page.isChecked("#autoExpandChats")).toBe(false);
     expect(await page.isChecked("#autoTempChat")).toBe(true);
+    expect(await page.isChecked("#oneClickDelete")).toBe(true);
 
     await page.selectOption("#skipKey", "Shift");
     await page.setChecked("#holdToSend", false);
     await page.setChecked("#autoExpandChats", true);
     await page.setChecked("#autoTempChat", false);
+    await page.setChecked("#oneClickDelete", false);
 
     await page.waitForFunction(() => {
       const data = window.__testStorage ?? {};
@@ -124,7 +127,8 @@ describe("extension e2e", () => {
         data.holdToSend === false &&
         data.autoExpandChats === true &&
         data.autoTempChat === false &&
-        data.tempChatEnabled === false
+        data.tempChatEnabled === false &&
+        data.oneClickDelete === false
       );
     });
 

@@ -28,6 +28,18 @@ declare global {
     if (DEBUG) console.info("[DictationAutoSend]", ...args);
   };
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function waitPresent(sel: string, root: Document | Element = document, timeoutMs = 2500) {
+    const t0 = performance.now();
+    while (performance.now() - t0 < timeoutMs) {
+      const el = root.querySelector(sel);
+      if (el) return el;
+      await sleep(25);
+    }
+    return null;
+  }
+
   interface Config {
     enabled: boolean;
     holdToSend: boolean;
@@ -35,6 +47,7 @@ declare global {
     modifierGraceMs: number;
     autoExpandChatsEnabled: boolean;
     autoTempChatEnabled: boolean;
+    oneClickDeleteEnabled: boolean;
     finalTextTimeoutMs: number;
     finalTextQuietMs: number;
     sendAckTimeoutMs: number;
@@ -51,6 +64,7 @@ declare global {
 
     autoExpandChatsEnabled: true,
     autoTempChatEnabled: false,
+    oneClickDeleteEnabled: false,
 
     finalTextTimeoutMs: 25000,
     finalTextQuietMs: 320,
@@ -630,15 +644,18 @@ declare global {
     CFG.holdToSend = settings.holdToSend;
     CFG.autoExpandChatsEnabled = settings.autoExpandChats;
     CFG.autoTempChatEnabled = settings.autoTempChat;
+    CFG.oneClickDeleteEnabled = settings.oneClickDelete;
     tempChatEnabled = settings.tempChatEnabled;
     log("settings refreshed", {
       skipKey: CFG.modifierKey,
       holdToSend: CFG.holdToSend,
       autoExpandChats: CFG.autoExpandChatsEnabled,
       autoTempChat: CFG.autoTempChatEnabled,
+      oneClickDelete: CFG.oneClickDeleteEnabled,
       tempChatEnabled
     });
     maybeEnableTempChat();
+    updateOneClickDeleteState();
   }
 
   let graceUntilMs = 0;
@@ -735,6 +752,265 @@ declare global {
     maybeEnableTempChat();
   }
 
+  const ONE_CLICK_DELETE_HOOK_MARK = "data-qqrm-oneclick-del-hooked";
+  const ONE_CLICK_DELETE_X_MARK = "data-qqrm-oneclick-del-x";
+  const ONE_CLICK_DELETE_STYLE_ID = "qqrm-oneclick-del-style";
+  const ONE_CLICK_DELETE_ROOT_FLAG = "data-qqrm-oneclick-deleting";
+  const ONE_CLICK_DELETE_BUTTON_SELECTOR =
+    'button[data-testid^="history-item-"][data-testid$="-options"]';
+  const ONE_CLICK_DELETE_RIGHT_ZONE_PX = 38;
+
+  const ONE_CLICK_DELETE_BTN_H = 36;
+  const ONE_CLICK_DELETE_BTN_W = 72;
+  const ONE_CLICK_DELETE_X_SIZE = 26;
+  const ONE_CLICK_DELETE_X_RIGHT = 6;
+  const ONE_CLICK_DELETE_DOTS_LEFT = 10;
+
+  const oneClickDeleteState: {
+    started: boolean;
+    deleting: boolean;
+    observer: MutationObserver | null;
+    intervalId: number | null;
+  } = {
+    started: false,
+    deleting: false,
+    observer: null,
+    intervalId: null
+  };
+
+  function setOneClickDeleteDeleting(on: boolean) {
+    if (on) document.documentElement.setAttribute(ONE_CLICK_DELETE_ROOT_FLAG, "1");
+    else document.documentElement.removeAttribute(ONE_CLICK_DELETE_ROOT_FLAG);
+  }
+
+  function ensureOneClickDeleteStyle() {
+    if (document.getElementById(ONE_CLICK_DELETE_STYLE_ID)) return;
+    const st = document.createElement("style");
+    st.id = ONE_CLICK_DELETE_STYLE_ID;
+    st.textContent = `
+      ${ONE_CLICK_DELETE_BUTTON_SELECTOR}{
+        width: ${ONE_CLICK_DELETE_BTN_W}px !important;
+        height: ${ONE_CLICK_DELETE_BTN_H}px !important;
+        border-radius: 12px !important;
+        opacity: 1 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        position: relative !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+      }
+
+      ${ONE_CLICK_DELETE_BUTTON_SELECTOR} svg{
+        position: absolute !important;
+        left: ${ONE_CLICK_DELETE_DOTS_LEFT}px !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+        pointer-events: none !important;
+      }
+
+      ${ONE_CLICK_DELETE_BUTTON_SELECTOR} > span[${ONE_CLICK_DELETE_X_MARK}="1"]{
+        position: absolute;
+        right: ${ONE_CLICK_DELETE_X_RIGHT}px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: ${ONE_CLICK_DELETE_X_SIZE}px;
+        height: ${ONE_CLICK_DELETE_X_SIZE}px;
+        border-radius: 9px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        font-weight: 600;
+        line-height: 18px;
+        color: #ff6b6b;
+        background: rgba(255, 90, 90, 0.08);
+        border: 1px solid rgba(255, 90, 90, 0.2);
+        box-shadow: -1px 0 0 rgba(255, 255, 255, 0.08) inset;
+        opacity: 0.0;
+        transition: opacity 140ms ease, background 140ms ease, transform 140ms ease;
+        user-select: none;
+        pointer-events: none;
+      }
+
+      ${ONE_CLICK_DELETE_BUTTON_SELECTOR}:hover > span[${ONE_CLICK_DELETE_X_MARK}="1"],
+      ${ONE_CLICK_DELETE_BUTTON_SELECTOR}:focus-visible > span[${ONE_CLICK_DELETE_X_MARK}="1"]{
+        opacity: 1.0;
+        background: rgba(255, 90, 90, 0.18);
+        transform: translateY(-50%) scale(1.02);
+      }
+
+      @media (prefers-color-scheme: light) {
+        ${ONE_CLICK_DELETE_BUTTON_SELECTOR} > span[${ONE_CLICK_DELETE_X_MARK}="1"]{
+          color: #d93636;
+          background: rgba(217, 54, 54, 0.08);
+          border-color: rgba(217, 54, 54, 0.25);
+          box-shadow: -1px 0 0 rgba(0, 0, 0, 0.08) inset;
+        }
+        ${ONE_CLICK_DELETE_BUTTON_SELECTOR}:hover > span[${ONE_CLICK_DELETE_X_MARK}="1"],
+        ${ONE_CLICK_DELETE_BUTTON_SELECTOR}:focus-visible > span[${ONE_CLICK_DELETE_X_MARK}="1"]{
+          background: rgba(217, 54, 54, 0.18);
+        }
+      }
+
+      html[${ONE_CLICK_DELETE_ROOT_FLAG}="1"] div[data-testid="modal-delete-conversation-confirmation"]{
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      html[${ONE_CLICK_DELETE_ROOT_FLAG}="1"] [data-radix-menu-content][role="menu"]{
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      html[${ONE_CLICK_DELETE_ROOT_FLAG}="1"] [data-radix-popper-content-wrapper]{
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      html[${ONE_CLICK_DELETE_ROOT_FLAG}="1"] *{
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function removeOneClickDeleteStyle() {
+    const st = document.getElementById(ONE_CLICK_DELETE_STYLE_ID);
+    if (st) st.remove();
+  }
+
+  function ensureOneClickDeleteXSpan(btn: HTMLElement) {
+    let x = btn.querySelector<HTMLSpanElement>(`span[${ONE_CLICK_DELETE_X_MARK}="1"]`);
+    if (x) return x;
+    x = document.createElement("span");
+    x.setAttribute(ONE_CLICK_DELETE_X_MARK, "1");
+    x.setAttribute("aria-label", "Delete chat");
+    x.title = "Delete chat";
+    x.textContent = "×";
+    btn.appendChild(x);
+    return x;
+  }
+
+  function clearOneClickDeleteButtons() {
+    const btns = qsa<HTMLElement>(ONE_CLICK_DELETE_BUTTON_SELECTOR);
+    for (const btn of btns) {
+      btn.removeAttribute(ONE_CLICK_DELETE_HOOK_MARK);
+      const x = btn.querySelector(`span[${ONE_CLICK_DELETE_X_MARK}="1"]`);
+      if (x) x.remove();
+    }
+  }
+
+  function hookOneClickDeleteButton(btn: HTMLElement) {
+    if (!btn || btn.nodeType !== 1) return;
+    if (btn.hasAttribute(ONE_CLICK_DELETE_HOOK_MARK)) return;
+    btn.setAttribute(ONE_CLICK_DELETE_HOOK_MARK, "1");
+    ensureOneClickDeleteXSpan(btn);
+  }
+
+  function isOneClickDeleteRightZone(btn: HTMLElement, ev: MouseEvent) {
+    const rect = btn.getBoundingClientRect();
+    const localX = ev.clientX - rect.left;
+    return localX >= rect.width - ONE_CLICK_DELETE_RIGHT_ZONE_PX;
+  }
+
+  async function runOneClickDeleteFlow() {
+    if (oneClickDeleteState.deleting) return;
+    oneClickDeleteState.deleting = true;
+    setOneClickDeleteDeleting(true);
+    try {
+      const deleteItem = await waitPresent(
+        'div[role="menuitem"][data-testid="delete-chat-menu-item"]',
+        document,
+        1500
+      );
+      if (!deleteItem) return;
+      humanClick(deleteItem as HTMLElement, "oneclick-delete-menu");
+
+      const modal = await waitPresent(
+        'div[data-testid="modal-delete-conversation-confirmation"]',
+        document,
+        2000
+      );
+      if (!modal) return;
+
+      const confirmBtn =
+        modal.querySelector('button[data-testid="delete-conversation-confirm-button"]') ||
+        (await waitPresent(
+          'button[data-testid="delete-conversation-confirm-button"]',
+          modal,
+          1500
+        ));
+
+      if (!confirmBtn) return;
+      humanClick(confirmBtn as HTMLElement, "oneclick-delete-confirm");
+    } finally {
+      await sleep(120);
+      setOneClickDeleteDeleting(false);
+      oneClickDeleteState.deleting = false;
+    }
+  }
+
+  function refreshOneClickDelete() {
+    if (!CFG.oneClickDeleteEnabled) return;
+    ensureOneClickDeleteStyle();
+    const btns = qsa<HTMLElement>(ONE_CLICK_DELETE_BUTTON_SELECTOR);
+    for (const btn of btns) hookOneClickDeleteButton(btn);
+  }
+
+  function handleOneClickDeleteClick(ev: MouseEvent) {
+    if (!CFG.oneClickDeleteEnabled) return;
+    if (!ev.isTrusted) return;
+    const target = ev.target;
+    if (!(target instanceof Element) || !target.closest) return;
+    const btn = target.closest(ONE_CLICK_DELETE_BUTTON_SELECTOR);
+    if (!(btn instanceof HTMLElement)) return;
+    if (!isOneClickDeleteRightZone(btn, ev)) return;
+    setTimeout(() => {
+      runOneClickDeleteFlow().catch(() => {});
+    }, 0);
+  }
+
+  function startOneClickDelete() {
+    if (oneClickDeleteState.started) return;
+    oneClickDeleteState.started = true;
+
+    document.addEventListener("click", handleOneClickDeleteClick, true);
+
+    refreshOneClickDelete();
+    oneClickDeleteState.intervalId = window.setInterval(refreshOneClickDelete, 1200);
+
+    oneClickDeleteState.observer = new MutationObserver(() => refreshOneClickDelete());
+    oneClickDeleteState.observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  function stopOneClickDelete() {
+    if (!oneClickDeleteState.started) return;
+    oneClickDeleteState.started = false;
+
+    document.removeEventListener("click", handleOneClickDeleteClick, true);
+
+    if (oneClickDeleteState.intervalId !== null) {
+      window.clearInterval(oneClickDeleteState.intervalId);
+      oneClickDeleteState.intervalId = null;
+    }
+    if (oneClickDeleteState.observer) {
+      oneClickDeleteState.observer.disconnect();
+      oneClickDeleteState.observer = null;
+    }
+
+    clearOneClickDeleteButtons();
+    removeOneClickDeleteStyle();
+    setOneClickDeleteDeleting(false);
+  }
+
+  function updateOneClickDeleteState() {
+    if (CFG.oneClickDeleteEnabled) startOneClickDelete();
+    else stopOneClickDelete();
+  }
+
   void refreshSettings();
   if (
     storageApi &&
@@ -750,6 +1026,7 @@ declare global {
             !("skipKey" in changes) &&
             !("holdToSend" in changes) &&
             !("autoTempChat" in changes) &&
+            !("oneClickDelete" in changes) &&
             !("tempChatEnabled" in changes))
         ) {
           return;

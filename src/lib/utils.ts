@@ -31,7 +31,9 @@ export function normalizeSettings(value: Record<string, unknown> | null | undefi
       typeof data.autoExpandChats === "boolean" ? data.autoExpandChats : base.autoExpandChats,
     autoTempChat: typeof data.autoTempChat === "boolean" ? data.autoTempChat : base.autoTempChat,
     tempChatEnabled:
-      typeof data.tempChatEnabled === "boolean" ? data.tempChatEnabled : base.tempChatEnabled
+      typeof data.tempChatEnabled === "boolean" ? data.tempChatEnabled : base.tempChatEnabled,
+    oneClickDelete:
+      typeof data.oneClickDelete === "boolean" ? data.oneClickDelete : base.oneClickDelete
   };
 }
 

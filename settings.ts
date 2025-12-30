@@ -4,6 +4,7 @@ export interface Settings {
   autoExpandChats: boolean;
   autoTempChat: boolean;
   tempChatEnabled: boolean;
+  oneClickDelete: boolean;
 }
 
 export type SettingsRecord = Settings & Record<string, unknown>;
@@ -13,5 +14,6 @@ export const SETTINGS_DEFAULTS: SettingsRecord = {
   holdToSend: false,
   autoExpandChats: true,
   autoTempChat: false,
-  tempChatEnabled: false
+  tempChatEnabled: false,
+  oneClickDelete: false
 };

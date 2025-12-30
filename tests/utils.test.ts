@@ -14,7 +14,8 @@ describe("utils", () => {
       holdToSend: true,
       autoExpandChats: "no",
       autoTempChat: false,
-      tempChatEnabled: "yes"
+      tempChatEnabled: "yes",
+      oneClickDelete: "no"
     } as Record<string, unknown>;
 
     const normalized = normalizeSettings(input);
@@ -24,7 +25,8 @@ describe("utils", () => {
       holdToSend: true,
       autoExpandChats: SETTINGS_DEFAULTS.autoExpandChats,
       autoTempChat: false,
-      tempChatEnabled: SETTINGS_DEFAULTS.tempChatEnabled
+      tempChatEnabled: SETTINGS_DEFAULTS.tempChatEnabled,
+      oneClickDelete: SETTINGS_DEFAULTS.oneClickDelete
     });
   });
 

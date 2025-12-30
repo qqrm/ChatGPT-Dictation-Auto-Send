@@ -22,6 +22,7 @@ const selectEl = mustGetElement<HTMLSelectElement>("skipKey");
 const holdEl = mustGetElement<HTMLInputElement>("holdToSend");
 const autoExpandEl = mustGetElement<HTMLInputElement>("autoExpandChats");
 const autoTempChatEl = mustGetElement<HTMLInputElement>("autoTempChat");
+const oneClickDeleteEl = mustGetElement<HTMLInputElement>("oneClickDelete");
 
 function setHint(skipKey: string, holdToSend: boolean) {
   if (skipKey === "None") {
@@ -50,6 +51,7 @@ async function load() {
   holdEl.checked = settings.holdToSend;
   autoExpandEl.checked = settings.autoExpandChats;
   autoTempChatEl.checked = settings.autoTempChat;
+  oneClickDeleteEl.checked = settings.oneClickDelete;
 
   setHint(settings.skipKey, settings.holdToSend);
 }
@@ -59,6 +61,7 @@ async function save() {
   const holdToSend = !!holdEl.checked;
   const autoExpandChats = !!autoExpandEl.checked;
   const autoTempChat = !!autoTempChatEl.checked;
+  const oneClickDelete = !!oneClickDeleteEl.checked;
 
   await storageSet(
     {
@@ -66,6 +69,7 @@ async function save() {
       holdToSend,
       autoExpandChats,
       autoTempChat,
+      oneClickDelete,
       tempChatEnabled: autoTempChat
     },
     storageApi,
@@ -79,5 +83,6 @@ selectEl.addEventListener("change", () => void save().catch(() => {}));
 holdEl.addEventListener("change", () => void save().catch(() => {}));
 autoExpandEl.addEventListener("change", () => void save().catch(() => {}));
 autoTempChatEl.addEventListener("change", () => void save().catch(() => {}));
+oneClickDeleteEl.addEventListener("change", () => void save().catch(() => {}));
 
 void load().catch(() => {});
