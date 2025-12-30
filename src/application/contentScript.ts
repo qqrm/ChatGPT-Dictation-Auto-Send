@@ -43,6 +43,7 @@ export const startContentScript = ({ storagePort }: ContentScriptDeps = {}) => {
   }
 
   interface ContentConfig extends DictationConfig {
+    allowAutoSendInCodex: boolean;
     autoExpandChatsEnabled: boolean;
     autoTempChatEnabled: boolean;
     oneClickDeleteEnabled: boolean;
@@ -56,6 +57,7 @@ export const startContentScript = ({ storagePort }: ContentScriptDeps = {}) => {
     holdToSend: false,
     modifierKey: "Shift",
     modifierGraceMs: 1600,
+    allowAutoSendInCodex: false,
 
     autoExpandChatsEnabled: true,
     autoTempChatEnabled: false,
@@ -640,12 +642,17 @@ export const startContentScript = ({ storagePort }: ContentScriptDeps = {}) => {
     return false;
   }
 
+  function isCodexPath(pathname: string) {
+    return pathname.startsWith("/codex") || pathname.startsWith("/codecs");
+  }
+
   async function refreshSettings() {
     const res = await resolvedStorage.get(SETTINGS_DEFAULTS);
     const settings = normalizeSettings(res);
     CFG.modifierKey = settings.skipKey;
     if (CFG.modifierKey === "None") CFG.modifierKey = null;
     CFG.holdToSend = settings.holdToSend;
+    CFG.allowAutoSendInCodex = settings.allowAutoSendInCodex;
     CFG.autoExpandChatsEnabled = settings.autoExpandChats;
     CFG.autoTempChatEnabled = settings.autoTempChat;
     CFG.oneClickDeleteEnabled = settings.oneClickDelete;
@@ -653,6 +660,7 @@ export const startContentScript = ({ storagePort }: ContentScriptDeps = {}) => {
     log("settings refreshed", {
       skipKey: CFG.modifierKey,
       holdToSend: CFG.holdToSend,
+      allowAutoSendInCodex: CFG.allowAutoSendInCodex,
       autoExpandChats: CFG.autoExpandChatsEnabled,
       autoTempChat: CFG.autoTempChatEnabled,
       oneClickDelete: CFG.oneClickDeleteEnabled,
@@ -1024,6 +1032,7 @@ export const startContentScript = ({ storagePort }: ContentScriptDeps = {}) => {
         (!("autoExpandChats" in changes) &&
           !("skipKey" in changes) &&
           !("holdToSend" in changes) &&
+          !("allowAutoSendInCodex" in changes) &&
           !("autoTempChat" in changes) &&
           !("oneClickDelete" in changes) &&
           !("tempChatEnabled" in changes))
@@ -1278,9 +1287,21 @@ export const startContentScript = ({ storagePort }: ContentScriptDeps = {}) => {
         });
       }
 
-      if (CFG.enabled && btn instanceof HTMLButtonElement && isSubmitDictationButton(btn)) {
+      if (
+        CFG.enabled &&
+        btn instanceof HTMLButtonElement &&
+        isSubmitDictationButton(btn) &&
+        (!isCodexPath(location.pathname) || CFG.allowAutoSendInCodex)
+      ) {
         void refreshSettings();
         void runFlowAfterSubmitClick(btnDesc, isModifierHeldFromEvent(e));
+      } else if (
+        isCodexPath(location.pathname) &&
+        !CFG.allowAutoSendInCodex &&
+        btn instanceof HTMLButtonElement &&
+        isSubmitDictationButton(btn)
+      ) {
+        tmLog("FLOW", "auto-send skipped on Codex path");
       }
     },
     true
